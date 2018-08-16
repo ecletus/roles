@@ -19,6 +19,7 @@ const (
 	Delete PermissionMode = "delete"
 	// CRUD predefined permission mode, create+read+update+delete permission
 	CRUD PermissionMode = "crud"
+	NONE PermissionMode = ""
 )
 
 // ErrPermissionDenied no permission error

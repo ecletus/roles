@@ -3,7 +3,7 @@ package roles_test
 import (
 	"testing"
 
-	"github.com/qor/roles"
+	"github.com/aghape/roles"
 )
 
 func TestAllow(t *testing.T) {
