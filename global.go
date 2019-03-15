@@ -20,6 +20,11 @@ func Deny(mode PermissionMode, roles ...string) *Permission {
 	return Global.Deny(mode, roles...)
 }
 
+// DenyAnother deny another roles for permission mode
+func DenyAnother(mode PermissionMode, roles ...string) *Permission {
+	return Global.DenyAnother(mode, roles...)
+}
+
 // Get role defination
 func Get(name string) (Checker, bool) {
 	return Global.Get(name)

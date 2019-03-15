@@ -39,9 +39,10 @@ func (role *Role) Register(name string, fc Checker) {
 // NewPermission initialize permission
 func (role *Role) NewPermission() *Permission {
 	return &Permission{
-		Role:         role,
-		AllowedRoles: map[PermissionMode][]string{},
-		DeniedRoles:  map[PermissionMode][]string{},
+		Role:               role,
+		AllowedRoles:       map[PermissionMode][]string{},
+		DeniedRoles:        map[PermissionMode][]string{},
+		DaniedAnotherRoles: map[PermissionMode][]string{},
 	}
 }
 
@@ -55,10 +56,23 @@ func (role *Role) Deny(mode PermissionMode, roles ...string) *Permission {
 	return role.NewPermission().Deny(mode, roles...)
 }
 
+// DenyAnother deny another roles for permission mode
+func (role *Role) DenyAnother(mode PermissionMode, roles ...string) *Permission {
+	return role.NewPermission().DenyAnother(mode, roles...)
+}
+
 // Get role defination
 func (role *Role) Get(name string) (Checker, bool) {
 	fc, ok := role.definitions[name]
 	return fc, ok
+}
+
+// Roles return roles names
+func (role *Role) Roles() (roles []string) {
+	for name := range role.definitions {
+		roles = append(roles, name)
+	}
+	return
 }
 
 // Remove role definition

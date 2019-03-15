@@ -27,9 +27,10 @@ var ErrPermissionDenied = errors.New("permission denied")
 
 // Permission a struct contains permission definitions
 type Permission struct {
-	Role         *Role
-	AllowedRoles map[PermissionMode][]string
-	DeniedRoles  map[PermissionMode][]string
+	Role               *Role
+	AllowedRoles       map[PermissionMode][]string
+	DeniedRoles        map[PermissionMode][]string
+	DaniedAnotherRoles map[PermissionMode][]string
 }
 
 func includeRoles(roles []string, values []string) bool {
@@ -50,21 +51,26 @@ func includeRoles(roles []string, values []string) bool {
 // Concat concat two permissions into a new one
 func (permission *Permission) Concat(newPermission *Permission) *Permission {
 	var result = Permission{
-		Role:         Global,
-		AllowedRoles: map[PermissionMode][]string{},
-		DeniedRoles:  map[PermissionMode][]string{},
+		Role:               Global,
+		AllowedRoles:       map[PermissionMode][]string{},
+		DeniedRoles:        map[PermissionMode][]string{},
+		DaniedAnotherRoles: map[PermissionMode][]string{},
 	}
 
 	var appendRoles = func(p *Permission) {
 		if p != nil {
 			result.Role = p.Role
 
+			for mode, roles := range p.AllowedRoles {
+				result.AllowedRoles[mode] = append(result.AllowedRoles[mode], roles...)
+			}
+
 			for mode, roles := range p.DeniedRoles {
 				result.DeniedRoles[mode] = append(result.DeniedRoles[mode], roles...)
 			}
 
-			for mode, roles := range p.AllowedRoles {
-				result.AllowedRoles[mode] = append(result.AllowedRoles[mode], roles...)
+			for mode, roles := range p.DaniedAnotherRoles {
+				result.DaniedAnotherRoles[mode] = append(result.DaniedAnotherRoles[mode], roles...)
 			}
 		}
 	}
@@ -100,8 +106,29 @@ func (permission *Permission) Deny(mode PermissionMode, roles ...string) *Permis
 	return permission
 }
 
-// HasPermission check roles has permission for mode or not
-func (permission Permission) HasPermission(mode PermissionMode, roles ...interface{}) bool {
+// DenyAnother deny another roles for permission mode
+func (permission *Permission) DenyAnother(mode PermissionMode, roles ...string) *Permission {
+	if mode == CRUD {
+		return permission.Allow(Create, roles...).Allow(Update, roles...).Allow(Read, roles...).Allow(Delete, roles...)
+	}
+
+	if permission.DaniedAnotherRoles[mode] == nil {
+		permission.DaniedAnotherRoles[mode] = []string{}
+	}
+	permission.DaniedAnotherRoles[mode] = append(permission.DaniedAnotherRoles[mode], roles...)
+	return permission
+}
+
+// HasPermissionS check roles strings has permission for mode or not
+func (permission Permission) HasPermissionS(mode PermissionMode, roles ...string) (bool, error) {
+	rolesi := make([]interface{}, len(roles))
+	for i, v := range roles {
+		rolesi[i] = v
+	}
+	return permission.HasPermissionE(mode, rolesi...)
+}
+
+func (permission Permission) HasPermissionE(mode PermissionMode, roles ...interface{}) (ok bool, err error) {
 	var roleNames []string
 	for _, role := range roles {
 		if r, ok := role.(string); ok {
@@ -109,29 +136,38 @@ func (permission Permission) HasPermission(mode PermissionMode, roles ...interfa
 		} else if roler, ok := role.(Roler); ok {
 			roleNames = append(roleNames, roler.GetRoles()...)
 		} else {
-			fmt.Printf("invalid role %#v\n", role)
-			return false
+			return false, fmt.Errorf("invalid role %#v", role)
+		}
+	}
+
+	if len(permission.DaniedAnotherRoles) != 0 {
+		if roles := permission.DaniedAnotherRoles[mode]; len(roles) > 0 {
+			if !includeRoles(roles, roleNames) {
+				return
+			}
 		}
 	}
 
 	if len(permission.DeniedRoles) != 0 {
-		if DeniedRoles := permission.DeniedRoles[mode]; DeniedRoles != nil {
+		if DeniedRoles := permission.DeniedRoles[mode]; len(DeniedRoles) > 0 {
 			if includeRoles(DeniedRoles, roleNames) {
-				return false
+				return
 			}
 		}
 	}
 
 	// return true if haven't define allowed roles
 	if len(permission.AllowedRoles) == 0 {
-		return true
+		ok = true
+		return
 	}
 
-	if AllowedRoles := permission.AllowedRoles[mode]; AllowedRoles != nil {
+	if AllowedRoles := permission.AllowedRoles[mode]; len(AllowedRoles) > 0 {
 		if includeRoles(AllowedRoles, roleNames) {
-			return true
+			ok = true
+			return
 		}
 	}
 
-	return false
+	return false, ErrDefaultPermission
 }
