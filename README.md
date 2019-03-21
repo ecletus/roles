@@ -2,7 +2,7 @@
 
 Roles is an authorization library for Golang.
 
-[![GoDoc](https://godoc.org/github.com/aghape/roles?status.svg)](https://godoc.org/github.com/aghape/roles)
+[![GoDoc](https://godoc.org/github.com/ecletus/roles?status.svg)](https://godoc.org/github.com/ecletus/roles)
 
 ## Documentation
 
