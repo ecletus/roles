@@ -1,8 +1,10 @@
 package roles
 
 import (
-	"errors"
+	"context"
 	"fmt"
+
+	"github.com/pkg/errors"
 )
 
 // PermissionMode permission mode
@@ -28,6 +30,7 @@ var ErrPermissionDenied = errors.New("permission denied")
 // Permission a struct contains permission definitions
 type Permission struct {
 	Role               *Role
+	AllowedAny         map[string]bool
 	AllowedRoles       map[PermissionMode][]string
 	DeniedRoles        map[PermissionMode][]string
 	DaniedAnotherRoles map[PermissionMode][]string
@@ -52,6 +55,7 @@ func includeRoles(roles []string, values []string) bool {
 func (permission *Permission) Concat(newPermission *Permission) *Permission {
 	var result = Permission{
 		Role:               Global,
+		AllowedAny:         map[string]bool{},
 		AllowedRoles:       map[PermissionMode][]string{},
 		DeniedRoles:        map[PermissionMode][]string{},
 		DaniedAnotherRoles: map[PermissionMode][]string{},
@@ -71,6 +75,10 @@ func (permission *Permission) Concat(newPermission *Permission) *Permission {
 
 			for mode, roles := range p.DaniedAnotherRoles {
 				result.DaniedAnotherRoles[mode] = append(result.DaniedAnotherRoles[mode], roles...)
+			}
+
+			for role, v := range p.AllowedAny {
+				result.AllowedAny[role] = v
 			}
 		}
 	}
@@ -119,31 +127,54 @@ func (permission *Permission) DenyAnother(mode PermissionMode, roles ...string) 
 	return permission
 }
 
+// DenyAnother deny any roles for permission mode
+func (permission *Permission) AllowAny(roles ...string) *Permission {
+	for _, role := range roles {
+		permission.AllowedAny[role] = true
+	}
+	return permission
+}
+
 // HasPermissionS check roles strings has permission for mode or not
-func (permission Permission) HasPermissionS(mode PermissionMode, roles ...string) (bool, error) {
+func (permission Permission) HasPermissionS(ctx context.Context, mode PermissionMode, roles ...string) Perm {
 	rolesi := make([]interface{}, len(roles))
 	for i, v := range roles {
 		rolesi[i] = v
 	}
-	return permission.HasPermissionE(mode, rolesi...)
+	return permission.HasPermission(ctx, mode, rolesi...)
 }
 
-func (permission Permission) HasPermissionE(mode PermissionMode, roles ...interface{}) (ok bool, err error) {
+func (permission Permission) HasPermission(ctx context.Context, mode PermissionMode, roles ...interface{}) (perm Perm) {
 	var roleNames []string
 	for _, role := range roles {
-		if r, ok := role.(string); ok {
-			roleNames = append(roleNames, r)
-		} else if roler, ok := role.(Roler); ok {
-			roleNames = append(roleNames, roler.GetRoles()...)
-		} else {
-			return false, fmt.Errorf("invalid role %#v", role)
+		switch t := role.(type) {
+		case string:
+			roleNames = append(roleNames, t)
+		case []string:
+			roleNames = append(roleNames, t...)
+		case Roler:
+			roleNames = append(roleNames, t.GetRoles()...)
+		default:
+			panic(errors.New(fmt.Sprintf("invalid role %#v", role)))
+		}
+	}
+
+	if len(permission.AllowedAny) > 0 {
+		var ok2 bool
+		for _, role := range roleNames {
+			if ok2 = permission.AllowedAny[role]; ok2 {
+				break
+			}
+		}
+		if !ok2 {
+			return DENY
 		}
 	}
 
 	if len(permission.DaniedAnotherRoles) != 0 {
 		if roles := permission.DaniedAnotherRoles[mode]; len(roles) > 0 {
 			if !includeRoles(roles, roleNames) {
-				return
+				return DENY
 			}
 		}
 	}
@@ -151,23 +182,20 @@ func (permission Permission) HasPermissionE(mode PermissionMode, roles ...interf
 	if len(permission.DeniedRoles) != 0 {
 		if DeniedRoles := permission.DeniedRoles[mode]; len(DeniedRoles) > 0 {
 			if includeRoles(DeniedRoles, roleNames) {
-				return
+				return DENY
 			}
 		}
 	}
 
 	// return true if haven't define allowed roles
 	if len(permission.AllowedRoles) == 0 {
-		ok = true
-		return
+		return ALLOW
 	}
 
 	if AllowedRoles := permission.AllowedRoles[mode]; len(AllowedRoles) > 0 {
 		if includeRoles(AllowedRoles, roleNames) {
-			ok = true
-			return
+			return ALLOW
 		}
 	}
-
-	return false, ErrDefaultPermission
+	return
 }

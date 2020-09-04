@@ -6,8 +6,13 @@ import "net/http"
 var Global = &Role{}
 
 // Register register role with conditions
-func Register(name string, fc Checker) {
-	Global.Register(name, fc)
+func Descriptors() DescriptorSlice {
+	return Global.Descriptors()
+}
+
+// Register register role with conditions
+func Register(descriptor ...*Descriptor) {
+	Global.Register(descriptor...)
 }
 
 // Allow allows permission mode for roles
@@ -25,9 +30,20 @@ func DenyAnother(mode PermissionMode, roles ...string) *Permission {
 	return Global.DenyAnother(mode, roles...)
 }
 
+// DenyAny deny any roles for permission mode
+func AllowAny(roles ...string) *Permission {
+	return Global.AllowAny(roles...)
+}
+
 // Get role defination
-func Get(name string) (Checker, bool) {
+func Get(name string) (*Descriptor, bool) {
 	return Global.Get(name)
+}
+
+// MustGet role defination
+func MustGet(name string) (d *Descriptor) {
+	d, _ = Global.Get(name)
+	return
 }
 
 // Remove role definition from global role instance
@@ -41,13 +57,13 @@ func Reset() {
 }
 
 // MatchedRoles return defined roles from user
-func MatchedRoles(req *http.Request, user interface{}) []string {
+func MatchedRoles(req *http.Request, user interface{}) Roles {
 	return Global.MatchedRoles(req, user)
 }
 
 // HasRole check if current user has role
 func HasRole(req *http.Request, user interface{}, roles ...string) bool {
-	return Global.HasRole(req, user)
+	return Global.HasRole(req, user, roles...)
 }
 
 // NewPermission initialize a new permission for default role

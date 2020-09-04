@@ -7,8 +7,18 @@ import (
 
 const (
 	// Anyone is a role for any one
-	Anyone = "*"
+	Anyone  = "*"
+	Visitor = "visitor"
 )
+
+func GetVisitor() *Descriptor {
+	return &Descriptor{
+		Name: Visitor,
+		Checker: func(req *http.Request, user interface{}) bool {
+			return user == nil
+		},
+	}
+}
 
 // Checker check current request match this role or not
 type Checker func(req *http.Request, user interface{}) bool
@@ -18,28 +28,42 @@ func New() *Role {
 	return &Role{}
 }
 
-// Role is a struct contains all roles definitions
+// Role is a struct contains all roles descriptors
 type Role struct {
-	definitions map[string]Checker
+	descriptors map[string]*Descriptor
 }
 
 // Register register role with conditions
-func (role *Role) Register(name string, fc Checker) {
-	if role.definitions == nil {
-		role.definitions = map[string]Checker{}
+func (role *Role) Register(descriptor ...*Descriptor) {
+	for _, descriptor := range descriptor {
+		if descriptor.Checker == nil {
+			panic("checker is nil")
+		}
+		if role.descriptors == nil {
+			role.descriptors = map[string]*Descriptor{}
+		}
+		if role.descriptors[descriptor.Name] != nil {
+			fmt.Printf("%v already defined, overwrited it!\n", descriptor.Name)
+		}
+		role.descriptors[descriptor.Name] = descriptor
 	}
+}
 
-	definition := role.definitions[name]
-	if definition != nil {
-		fmt.Printf("%v already defined, overwrited it!\n", name)
+// DescriptorSlice return slice of descriptors
+func (role *Role) Descriptors() (desciptors DescriptorSlice) {
+	if role.descriptors != nil {
+		for _, descriptor := range role.descriptors {
+			desciptors = append(desciptors, descriptor)
+		}
 	}
-	role.definitions[name] = fc
+	return
 }
 
 // NewPermission initialize permission
 func (role *Role) NewPermission() *Permission {
 	return &Permission{
 		Role:               role,
+		AllowedAny:         map[string]bool{},
 		AllowedRoles:       map[PermissionMode][]string{},
 		DeniedRoles:        map[PermissionMode][]string{},
 		DaniedAnotherRoles: map[PermissionMode][]string{},
@@ -61,36 +85,42 @@ func (role *Role) DenyAnother(mode PermissionMode, roles ...string) *Permission 
 	return role.NewPermission().DenyAnother(mode, roles...)
 }
 
+// DenyAny deny all roles for permission mode
+func (role *Role) AllowAny(roles ...string) *Permission {
+	return role.NewPermission().AllowAny(roles...)
+}
+
 // Get role defination
-func (role *Role) Get(name string) (Checker, bool) {
-	fc, ok := role.definitions[name]
-	return fc, ok
+func (role *Role) Get(name string) (descriptor *Descriptor, ok bool) {
+	descriptor, ok = role.descriptors[name]
+	return
 }
 
 // Roles return roles names
-func (role *Role) Roles() (roles []string) {
-	for name := range role.definitions {
-		roles = append(roles, name)
+func (role *Role) Roles() (roles Roles) {
+	roles.m = map[string]interface{}{}
+	for name := range role.descriptors {
+		roles.Append(name)
 	}
 	return
 }
 
-// Remove role definition
+// Remove role descriptor
 func (role *Role) Remove(name string) {
-	delete(role.definitions, name)
+	delete(role.descriptors, name)
 }
 
-// Reset role definitions
+// Reset role descriptors
 func (role *Role) Reset() {
-	role.definitions = map[string]Checker{}
+	role.descriptors = map[string]*Descriptor{}
 }
 
 // MatchedRoles return defined roles from user
-func (role *Role) MatchedRoles(req *http.Request, user interface{}) (roles []string) {
-	if definitions := role.definitions; definitions != nil {
-		for name, definition := range definitions {
-			if definition(req, user) {
-				roles = append(roles, name)
+func (role *Role) MatchedRoles(req *http.Request, user interface{}) (roles Roles) {
+	if descriptors := role.descriptors; descriptors != nil {
+		for name, descriptor := range descriptors {
+			if descriptor.Checker(req, user) {
+				roles.Append(name)
 			}
 		}
 	}
@@ -99,14 +129,24 @@ func (role *Role) MatchedRoles(req *http.Request, user interface{}) (roles []str
 
 // HasRole check if current user has role
 func (role *Role) HasRole(req *http.Request, user interface{}, roles ...string) bool {
-	if definitions := role.definitions; definitions != nil {
+	if descriptors := role.descriptors; descriptors != nil {
 		for _, name := range roles {
-			if definition, ok := definitions[name]; ok {
-				if definition(req, user) {
+			if descriptor, ok := descriptors[name]; ok {
+				if descriptor.Checker(req, user) {
 					return true
 				}
 			}
 		}
 	}
 	return false
+}
+
+// Copy Copy this role
+func (role Role) Copy() *Role {
+	var descriptors = map[string]*Descriptor{}
+	for k, v := range role.descriptors {
+		descriptors[k] = v
+	}
+	role.descriptors = descriptors
+	return &role
 }
